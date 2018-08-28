@@ -11,11 +11,13 @@ namespace {
 #define MIN_NUM_FEAT 2000
 //const char *img_path = "C:\\Users\\vponomarev\\Desktop\\01\\img_datasets\\e1i90v1a30_undistorted\\frame%06d.jpg";
 const char *img_path = "C:\\Users\\vponomarev\\Desktop\\01\\img_datasets\\e1i90v1a30\\frame%06d.jpg";
+//const char *img_path = "/home/ubuntu/Ponomarev/01/img_datasets/e1i90v1a30/frame%06d.jpg";
 const char* keys =
 		"{help h usage ?  |    | print help message }"
 		"{@calib   |        | specify calib file }";
 } //unnamed namespace
 
+using namespace boost::filesystem; 
 int main(int argc, const char* argv[]) {
 	cv::CommandLineParser cmd(argc, argv, keys);
 	if (cmd.has("help") || !cmd.check()){
@@ -23,7 +25,9 @@ int main(int argc, const char* argv[]) {
 		cmd.printErrors();
 		return 0;
 	}
-	std::string calib_filename = cmd.get<std::string>("@calib"); calib_filename = "z.yaml";
+	std::string calib_filename = cmd.get<std::string>("@calib"); 
+	calib_filename = "z.yaml";
+	//calib_filename = "/home/ubuntu/Ponomarev/Odometr/z.yaml";
 	cameraparam::CameraParam camera_param;
 	if (!boost::filesystem::exists(calib_filename))
 		std::cout << "No calibrated file" << std::endl;
@@ -32,9 +36,12 @@ int main(int argc, const char* argv[]) {
 
 	char filename[200];
 	int  counter = 0;
+	//path p("C:\\Users\\vponomarev\\Desktop\\OdometrCPU\\cabinet\\cabinet");
+	//directory_iterator itr(p);
+	//directory_iterator end_itr;
+	//cv::Mat img = cv::imread(itr->path().string());
 	sprintf(filename, img_path, counter);
-
-	cv::Mat img = cv::imread(filename);
+    cv::Mat img = cv::imread(filename);
 	
 	odometr::Odometr odometr(camera_param,img);
 	
@@ -45,10 +52,13 @@ int main(int argc, const char* argv[]) {
 	std::clock_t start;
 	double duration;
 	start = std::clock();
+	counter = 1;
+    //itr++;
 	// cycle through the directory
-	for (counter = 1; counter < 384; ++counter) {
+	for (counter = 1; counter < MAX_FRAME; ++counter) {
 		sprintf(filename, img_path, counter);
 		img = cv::imread(filename);
+		//img = cv::imread(itr->path().string());
 		odometr.Do(img);
 		odometr::OdometryData  odometry_data = odometr.GetOdometryData();
 		
@@ -59,12 +69,14 @@ int main(int argc, const char* argv[]) {
 			R_f = R;
 			continue;
 		}
+		if (odometr.GetFlag())
+			continue;
 		double scale = 4.0;
-		if ((scale > 0.1) && (t(2) > t(0)) && (t(2) > t(1))) {
+		if (   ((scale-0.1)>0) && ((t(2)-t(0))>0) && ((t(2)-t(1))>0)  ) {
 			t_f = t_f + scale * (R_f*t);
 			R_f = R * R_f;
 		}
-
+		std::cout << filename << std::endl;
 		DrawTrajectory(t_f, traj);
 		if (cv::waitKey(1) == 27)
 			break;

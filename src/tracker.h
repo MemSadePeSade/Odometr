@@ -6,11 +6,11 @@
 
 namespace cameraparam {
 	struct CameraParam {
-		CameraParam() : pp(358.9874749825216, 201.7120939366421), intrisic_mat(1, 0, 0, 0, 1, 0, 0, 0, 1),
+		CameraParam() : pp(358.9874749825216f, 201.7120939366421f), intrisic_mat(1, 0, 0, 0, 1, 0, 0, 0, 1),
 			dist_coeff(0, 0, 0, 0) {}
 		cv::Matx<double, 1, 4> dist_coeff;
 		cv::Matx33d intrisic_mat;
-		double focal_length = 681.609;
+		double focal_length = 681.609f;
 		cv::Point2d pp;
 	};
 
@@ -20,7 +20,7 @@ namespace cameraparam {
 		camera_param.intrisic_mat(0, 2) = parametrs[2]; //cx
 		camera_param.intrisic_mat(1, 1) = parametrs[1]; //fy
 		camera_param.intrisic_mat(1, 2) = parametrs[3]; //cy
-		camera_param.focal_length = 681.609;//cv::norm(cv::Point2d(parametrs[0], parametrs[1]));
+		camera_param.focal_length = 681.609f;//cv::norm(cv::Point2d(parametrs[0], parametrs[1]));
 		camera_param.pp.x = parametrs[2];
 		camera_param.pp.y = parametrs[3];
 	}
@@ -151,7 +151,7 @@ namespace tracker {
 			calcOpticalFlowPyrLK(m_state.img, img, m_state.points, points,
 				status, err, winSize, 3, termcrit, 0, 0.001);
 			int indexCorrection = 0;
-			for (int i = 0; i < status.size(); i++) {
+			for (size_t i = 0; i < status.size(); i++) {
 				cv::Point2d pt = points.at(i - indexCorrection);
 				if ((status.at(i) == 0) || (pt.x < 0) || (pt.y < 0)) {
 					m_state.points.erase(m_state.points.begin() + (i - indexCorrection));
@@ -201,6 +201,7 @@ namespace odometr {
 			m_pt_kfr *= (1.0 / pts_dst.size());
 		}
 		void Do(const cv::Mat& img) {
+			m_bad_flag = false;
 			const auto& focal_length = m_preprocessor.camera_param.focal_length;
 			const auto& pp = m_preprocessor.camera_param.pp;
 			const auto&& img_curr = m_preprocessor(img);
@@ -214,6 +215,7 @@ namespace odometr {
 			double norm_movement = cv::norm(m_pt_kfr - pt_kfr_curr);
 			if (norm_movement < KeyFrThresh) {
 				std::cout << "work" << std::endl;
+				m_bad_flag = true;
 				return;
 			}
 			
@@ -246,9 +248,11 @@ namespace odometr {
 			++m_counter;
 		}
 		OdometryData GetOdometryData() { return m_odometry_data; }
+		bool GetFlag() { return m_bad_flag; }
 	private:
 		int m_counter = 1;
 		cv::Point2f m_pt_kfr;
+		bool m_bad_flag = false;
 		OdometryData m_odometry_data;
 		preprocess::PreProcess m_preprocessor;
 		detector::GFTTDetector m_detector;
