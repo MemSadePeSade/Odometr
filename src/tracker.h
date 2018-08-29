@@ -176,7 +176,7 @@ namespace tracker {
 
 namespace odometr {
     #define MIN_NUM_FEAT 2000
-    #define KeyFrThresh  0.0
+    #define KeyFrThresh  2.4
 	enum class FeatureType {
 		BRISK, ORB, MSER, FAST,
 		AGAST, GFTT, KAZE, SURF,
@@ -200,32 +200,17 @@ namespace odometr {
 				                       cv::Point2f(0, 0), std::plus<cv::Point2f>());
 			m_pt_kfr *= (1.0 / pts_dst.size());
 		}
-		void Do(const cv::Mat& img) {
-			m_bad_flag = false;
+		void RecoverPose(const std::vector<cv::Point2f>& pts_curr,
+			             const std::vector<cv::Point2f>& pts_prev){
 			const auto& focal_length = m_preprocessor.camera_param.focal_length;
 			const auto& pp = m_preprocessor.camera_param.pp;
-			const auto&& img_curr = m_preprocessor(img);
-			auto&& pts_curr = m_tracker.ToTrackandCorrectIndex(img_curr);
-			const auto&& pts_prev = m_tracker.GetPoints();
-			
-			/// add keyframe 
-			cv::Point2f pt_kfr_curr = std::accumulate(pts_curr.begin(), pts_curr.end(),
-				cv::Point2f(0, 0), std::plus<cv::Point2f>());
-			pt_kfr_curr *= (1.0 / pts_curr.size());
-			double norm_movement = cv::norm(m_pt_kfr - pt_kfr_curr);
-			if (norm_movement < KeyFrThresh) {
-				std::cout << "work" << std::endl;
-				m_bad_flag = true;
-				return;
-			}
-			
-			cv::Matx31d& t = m_odometry_data.t;
-			cv::Matx33d& R = m_odometry_data.R;
+			auto& t = m_odometry_data.t;
+			auto& R = m_odometry_data.R;
 			cv::Mat E, mask;
 			E = cv::findEssentialMat(pts_curr, pts_prev, focal_length,
 				m_preprocessor.camera_param.pp, cv::RANSAC, 0.999, 1.0, mask);
 			// init R,t
-			if (m_counter == 1) 
+			if (m_counter == 1)
 				cv::recoverPose(E, pts_curr, pts_prev, R, t, focal_length, pp, mask);
 			else { //calculate  R,t
 				cv::Matx33d R1, R2;
@@ -239,21 +224,60 @@ namespace odometr {
 					cv::recoverPose(E, pts_curr, pts_prev, R, t, focal_length, pp, mask);
 				else { R = R2; t = T; }
 			}
-			// Update state 
+		}
+		
+		void Do(const cv::Mat& img) {
+			m_bad_flag = false;
+			const auto&& img_curr = m_preprocessor(img);
+			// matcher
+			auto&& pts_curr = m_tracker.ToTrackandCorrectIndex(img_curr);
+			const auto&& pts_prev = m_tracker.GetPoints();
+			/// add keyframe 
+			cv::Point2f pt_kfr_curr = std::accumulate(pts_curr.begin(), pts_curr.end(),
+				cv::Point2f(0, 0), std::plus<cv::Point2f>());
+			pt_kfr_curr *= (1.0 / pts_curr.size());
+			double norm_movement = cv::norm(m_pt_kfr - pt_kfr_curr);
+			if (norm_movement < KeyFrThresh) {
+				//std::cout << "work" << std::endl;
+				m_bad_flag = true;
+				return;
+			}
+			RecoverPose(pts_curr, pts_prev);
+			UpdateGlobalOdometryData();
+			// Update state  tracker
 			m_tracker.UpdateStateTrackerImage(img_curr);
 			if (m_tracker.NumPoints() < MIN_NUM_FEAT)
 				pts_curr = m_detector(img_curr);
 			m_tracker.UpdateStateTrackerPoints(pts_curr);
+			
 			m_pt_kfr = pt_kfr_curr;
 			++m_counter;
 		}
 		OdometryData GetOdometryData() { return m_odometry_data; }
+		OdometryData GetGlobalOdometryData() { return m_odometry_global_data; }
 		bool GetFlag() { return m_bad_flag; }
+		void UpdateGlobalOdometryData(){
+			const auto& t = m_odometry_data.t;
+			const auto& R = m_odometry_data.R;
+			auto& t_f = m_odometry_global_data.t;
+			auto& R_f = m_odometry_global_data.R;
+			if (m_counter == 1) {
+				t_f = t;
+				R_f = R;
+				return;
+			}
+			double scale = 0.35;
+			if (  (scale > 0.1) && (t(2) > t(0)) && (t(2) > t(1))  ) {
+				t_f = t_f + scale * (R_f*t);
+				R_f = R * R_f;
+			}
+		}
 	private:
 		int m_counter = 1;
 		cv::Point2f m_pt_kfr;
 		bool m_bad_flag = false;
 		OdometryData m_odometry_data;
+		OdometryData m_odometry_global_data;
 		preprocess::PreProcess m_preprocessor;
 		detector::GFTTDetector m_detector;
 		tracker::Tracker m_tracker;

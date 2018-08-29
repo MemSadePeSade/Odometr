@@ -1,7 +1,9 @@
 #include<string>
+#include<memory>
 
 #include <boost/filesystem/operations.hpp>
-#include "opencv2/core/utility.hpp"
+#include <opencv2/core/utility.hpp>
+#include <opencv2/viz/vizcore.hpp>
 
 #include "tracker.h"
 #include "draw.h"
@@ -53,33 +55,38 @@ int main(int argc, const char* argv[]) {
 	double duration;
 	start = std::clock();
 	counter = 1;
-    //itr++;
+	
+	/// Create a window
+	cv::viz::Viz3d mywindow("Viz Demo");
+	mywindow.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem());
+	
+	//itr++;
 	// cycle through the directory
+	std::vector<cv::Affine3f> path;
 	for (counter = 1; counter < MAX_FRAME; ++counter) {
 		sprintf(filename, img_path, counter);
 		img = cv::imread(filename);
 		//img = cv::imread(itr->path().string());
 		odometr.Do(img);
-		odometr::OdometryData  odometry_data = odometr.GetOdometryData();
-		
+		odometr::OdometryData  odometry_data = odometr.GetGlobalOdometryData();
 		cv::Matx31d& t = odometry_data.t;
 		cv::Matx33d& R = odometry_data.R;
-		if (counter == 1) {
-			t_f = t;
-			R_f = R;
-			continue;
-		}
+		
 		if (odometr.GetFlag())
 			continue;
-		double scale = 4.0;
-		if (   ((scale-0.1)>0) && ((t(2)-t(0))>0) && ((t(2)-t(1))>0)  ) {
-			t_f = t_f + scale * (R_f*t);
-			R_f = R * R_f;
-		}
-		std::cout << filename << std::endl;
+	
+		cv::Vec3d tt(t(0), t(1), t(2));
+		cv::Affine3d cam_pose = cv::Affine3d(R_f, tt);;
+		path.push_back(cam_pose);
+		cv::viz::WTrajectory  path_w(path,3);
+		/*
 		DrawTrajectory(t_f, traj);
 		if (cv::waitKey(1) == 27)
+			break;*/
+		mywindow.showWidget("PATH", path_w);
+		if (mywindow.wasStopped())
 			break;
+		mywindow.spinOnce(1, true);
 	}
 	cv::destroyAllWindows();
 	duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
