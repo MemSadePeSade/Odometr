@@ -1,5 +1,4 @@
 #include<string>
-#include<memory>
 
 #include <boost/filesystem/operations.hpp>
 #include <opencv2/core/utility.hpp>
@@ -7,6 +6,7 @@
 
 #include "tracker.h"
 #include "draw.h"
+#include "reader.h"
 
 namespace {
 #define MAX_FRAME 384
@@ -35,16 +35,10 @@ int main(int argc, const char* argv[]) {
 		std::cout << "No calibrated file" << std::endl;
 	else
 		LoadCameraParam(calib_filename, camera_param);
-
-	char filename[200];
-	int  counter = 0;
-	//path p("C:\\Users\\vponomarev\\Desktop\\OdometrCPU\\cabinet\\cabinet");
-	//directory_iterator itr(p);
-	//directory_iterator end_itr;
-	//cv::Mat img = cv::imread(itr->path().string());
-	sprintf(filename, img_path, counter);
-    cv::Mat img = cv::imread(filename);
+	ReaderFromPrintf reader(img_path);
 	
+	cv::Mat img;
+	reader.Read(img);
 	odometr::Odometr odometr(camera_param,img);
 	
 	cv::Mat traj = cv::Mat::zeros(600, 600, CV_8UC3);
@@ -54,19 +48,14 @@ int main(int argc, const char* argv[]) {
 	std::clock_t start;
 	double duration;
 	start = std::clock();
-	counter = 1;
 	
 	/// Create a window
 	cv::viz::Viz3d mywindow("Viz Demo");
 	mywindow.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem());
 	
-	//itr++;
 	// cycle through the directory
 	std::vector<cv::Affine3f> path;
-	for (counter = 1; counter < MAX_FRAME; ++counter) {
-		sprintf(filename, img_path, counter);
-		img = cv::imread(filename);
-		//img = cv::imread(itr->path().string());
+	while(reader.Read(img)) {
 		odometr.Do(img);
 		odometr::OdometryData  odometry_data = odometr.GetGlobalOdometryData();
 		cv::Matx31d& t = odometry_data.t;
@@ -74,15 +63,15 @@ int main(int argc, const char* argv[]) {
 		
 		if (odometr.GetFlag())
 			continue;
-	
+		
+		DrawTrajectory(t, traj);
+		if (cv::waitKey(1) == 27)
+			break;
 		cv::Vec3d tt(t(0), t(1), t(2));
 		cv::Affine3d cam_pose = cv::Affine3d(R_f, tt);;
 		path.push_back(cam_pose);
 		cv::viz::WTrajectory  path_w(path,3);
-		/*
-		DrawTrajectory(t_f, traj);
-		if (cv::waitKey(1) == 27)
-			break;*/
+		
 		mywindow.showWidget("PATH", path_w);
 		if (mywindow.wasStopped())
 			break;

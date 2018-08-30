@@ -176,7 +176,7 @@ namespace tracker {
 
 namespace odometr {
     #define MIN_NUM_FEAT 2000
-    #define KeyFrThresh  2.4
+    #define KeyFrThresh  0.0
 	enum class FeatureType {
 		BRISK, ORB, MSER, FAST,
 		AGAST, GFTT, KAZE, SURF,
@@ -266,7 +266,7 @@ namespace odometr {
 				R_f = R;
 				return;
 			}
-			double scale = 0.35;
+			double scale = 4;//0.35;
 			if (  (scale > 0.1) && (t(2) > t(0)) && (t(2) > t(1))  ) {
 				t_f = t_f + scale * (R_f*t);
 				R_f = R * R_f;
