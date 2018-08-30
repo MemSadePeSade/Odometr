@@ -29,7 +29,6 @@ public:
 	bool Read(cv::Mat& img) {
 		sprintf(m_filename, m_img_path, m_counter);
 		img = cv::imread(m_filename);
-		std::cout << m_filename << std::endl;
 		++m_counter;
 		return !img.empty();
 	}
