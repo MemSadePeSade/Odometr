@@ -16,7 +16,8 @@ namespace {
 //const char *img_path = "C:\\Users\\vponomarev\\Desktop\\01\\img_datasets\\e1i90v1a30\\frame%06d.jpg";
 //const char *img_path = "/home/ubuntu/Ponomarev/01/img_datasets/e1i90v1a30/frame%06d.jpg";
 //const char *img_path = "C:\\Users\\vponomarev\\Desktop\\01\\img_datasets\\imagesup\\frame%06d.jpg";
-	const char *img_path = "C:\\Users\\vponomarev\\Desktop\\01\\victor_test";
+const char *img_path = "C:\\Users\\vponomarev\\Desktop\\01\\victor_test";
+//const char *img_path = "C:\\Users\\vponomarev\\Desktop\\01\\test_odometer_1809051912";
 const char* keys =
 		"{help h usage ?  |    | print help message }"
 		"{@calib   |        | specify calib file }";

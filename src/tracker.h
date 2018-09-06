@@ -197,7 +197,7 @@ namespace tracker {
 
 namespace odometr {
     #define MIN_NUM_FEAT 2000
-    #define KeyFrThresh  10.0
+    #define KeyFrThresh  0.0
 	enum class FeatureType {
 		BRISK, ORB, MSER, FAST,
 		AGAST, GFTT, KAZE, SURF,
@@ -274,29 +274,38 @@ namespace odometr {
 			rows = s.height;
 			cols = s.width;
 
+			auto euler_angles1 = rotationMatrixToEulerAngles(R1);
+			auto euler_angles2 = rotationMatrixToEulerAngles(R2);
+
+			auto dist1 = abs(euler_angles1(0)) + abs(euler_angles1(1)) + abs(euler_angles1(2));
+			auto dist2 = abs(euler_angles2(0)) + abs(euler_angles2(1)) + abs(euler_angles2(2));
+			bool flag = true;
+			if (dist1 > dist2)
+				flag = false;
+			
 			for (int i = 0; i < cols; ++i)
 			{
 				if ((Q1.at<double>(2, i) >= Q2.at<double>(2, i)) &&
 					(Q1.at<double>(2, i) >= Q3.at<double>(2, i)) &&
-					(Q1.at<double>(2, i) >= Q4.at<double>(2, i)))
+					(Q1.at<double>(2, i) >= Q4.at<double>(2, i)) && flag)
 				{
 					++count1;
 				}
 				if ((Q2.at<double>(2, i) >= Q1.at<double>(2, i)) &&
 					(Q2.at<double>(2, i) >= Q3.at<double>(2, i)) &&
-					(Q2.at<double>(2, i) >= Q4.at<double>(2, i)))
+					(Q2.at<double>(2, i) >= Q4.at<double>(2, i)) && !flag)
 				{
 					++count2;
 				}
 				if ((Q3.at<double>(2, i) >= Q1.at<double>(2, i)) &&
 					(Q3.at<double>(2, i) >= Q4.at<double>(2, i)) &&
-					(Q3.at<double>(2, i) >= Q2.at<double>(2, i)))
+					(Q3.at<double>(2, i) >= Q2.at<double>(2, i)) && flag)
 				{
 					++count3;
 				}
 				if ((Q4.at<double>(2, i) >= Q1.at<double>(2, i)) &&
 					(Q4.at<double>(2, i) >= Q3.at<double>(2, i)) &&
-					(Q4.at<double>(2, i) >= Q2.at<double>(2, i)))
+					(Q4.at<double>(2, i) >= Q2.at<double>(2, i)) && !flag)
 				{
 					++count4;
 				}
@@ -317,18 +326,18 @@ namespace odometr {
 				t = T;
 			}
 			else if ((count3 >= count2) &&
-				(count3 >= count4)
+				(count3 >= count1)
 				&& (count3 >= count4))
 			{
 				R = R1;
-				t = T;
+				t = T; t = -t;
 			}
 			else if ((count4 >= count1) &&
 				(count4 >= count2) &&
 				(count4 >= count3))
 			{
 				R = R2;
-				t = T;
+				t = T; t = -t;
 			}
 		}
 		void RecoverPose(const std::vector<cv::Point2f>& pts_curr,
@@ -342,7 +351,6 @@ namespace odometr {
 				m_preprocessor.camera_param.pp, cv::RANSAC, 0.999, 1.0, mask);
 			//cv::recoverPose(E, pts_curr, pts_prev, R, t, focal_length, pp, mask);
 			// init R,t
-			
 			if (m_counter == 1)
 				cv::recoverPose(E, pts_curr, pts_prev, R, t, focal_length, pp, mask);
 			else { //calculate  R,t
@@ -413,10 +421,12 @@ namespace odometr {
 				R_f = R * R_f;
 			}*/
 			double scale = 4;//0.35;
-			if (  (scale > 0.1) && (t(2) > t(0)) && (t(2) > t(1))  ) {
+			/*if (  (scale > 0.1) && (t(2) > t(0)) && (t(2) > t(1))  ) {
 				t_f = t_f + scale * (R_f*t);
 				R_f = R * R_f;
-			}
+			}*/
+			t_f = t_f + scale * (R_f*t);
+			R_f = R * R_f;
 		}
 	private:
 		int m_counter = 1;
