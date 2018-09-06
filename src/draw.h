@@ -5,15 +5,15 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
-namespace {
+namespace draw{
 	char text[100];
 	int fontFace = cv::FONT_HERSHEY_PLAIN;
 	double fontScale = 1;
 	int thickness = 1;
 	cv::Point textOrg(10, 50);
 
-	void DrawOpticalFlow(std::vector<cv::Point2f>& points_prev,
-		std::vector<cv::Point2f>& points_curr, cv::Mat& img_curr) {
+	void DrawOpticalFlow(const std::vector<cv::Point2f>& points_prev,
+		const std::vector<cv::Point2f>& points_curr, const cv::Mat& img_curr) {
 		cv::Mat img_curr_keypoints;
 		std::vector<cv::KeyPoint> draw_points_curr;
 		draw_points_curr.resize(points_curr.size());

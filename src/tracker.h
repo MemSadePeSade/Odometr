@@ -4,11 +4,14 @@
 
 #include"opencv2/opencv.hpp"
 
+#include"draw.h"
+
 namespace cameraparam {
 	struct CameraParam {
 		CameraParam() : pp(358.9874749825216f, 201.7120939366421f), intrisic_mat(1, 0, 0, 0, 1, 0, 0, 0, 1),
 			dist_coeff(0, 0, 0, 0) {}
 		cv::Matx<double, 1, 4> dist_coeff;
+		//cv::Matx<double, 1, 5> dist_coeff;
 		cv::Matx33d intrisic_mat;
 		double focal_length = 681.609f;
 		cv::Point2d pp;
@@ -61,6 +64,24 @@ namespace cameraparam {
 			}
 		}
 		fs.release();
+		return 0;
+	}
+	int LoadOpenCVCameraParam(const std::string& filename, CameraParam& camera_param){
+		cv::FileStorage fs;
+		fs.open(filename, cv::FileStorage::READ);
+		std::cout << "\nimage width: " << static_cast<int>(fs["image_width"]);
+		std::cout << "\nimage height: " << static_cast<int>(fs["image_height"]);
+		cv::Mat intrisic;
+		cv::Mat distcoeff;
+		fs["camera_matrix"] >> intrisic;
+		fs["distortion_coefficients"] >> distcoeff;
+		camera_param.intrisic_mat = intrisic;
+		camera_param.dist_coeff = distcoeff;
+		
+		camera_param.focal_length = camera_param.intrisic_mat(0, 0);
+		camera_param.pp = cv::Point2d(camera_param.intrisic_mat(0, 2), camera_param.intrisic_mat(1, 2));
+		std::cout << "\nintrinsic matrix:" << camera_param.intrisic_mat;
+		std::cout << "\ndistortion coefficients: " << camera_param.dist_coeff << std::endl;
 		return 0;
 	}
 }
@@ -176,7 +197,7 @@ namespace tracker {
 
 namespace odometr {
     #define MIN_NUM_FEAT 2000
-    #define KeyFrThresh  0.0
+    #define KeyFrThresh  10.0
 	enum class FeatureType {
 		BRISK, ORB, MSER, FAST,
 		AGAST, GFTT, KAZE, SURF,
@@ -187,7 +208,15 @@ namespace odometr {
 		cv::Matx31d t;
 		cv::Matx33d R;
 	};
-
+	struct OdometryDataAll {
+		OdometryDataAll() : t(0, 0, 0), R1(1, 0, 0, 0, 1, 0, 0, 0, 1),R2(1, 0, 0, 0, 1, 0, 0, 0, 1) {};
+		cv::Matx31d t;
+		cv::Matx33d R1;
+		cv::Vec3d euler1;
+		cv::Matx33d R2;
+		cv::Vec3d euler2;
+	};
+	
 	class Odometr {
 	public:	
 		Odometr(cameraparam::CameraParam& camera_param, const cv::Mat& img) :
@@ -200,6 +229,108 @@ namespace odometr {
 				                       cv::Point2f(0, 0), std::plus<cv::Point2f>());
 			m_pt_kfr *= (1.0 / pts_dst.size());
 		}
+		void CalculateRandT(const cv::Mat& E, cv::Matx33d& R, cv::Matx31d& t,
+			const std::vector<cv::Point2f>& currFeatures,
+			const std::vector<cv::Point2f>& prevFeatures) {
+			cv::Mat R1, R2, T;
+			decomposeEssentialMat(E, R1, R2, T);
+			cv::Mat P0 = cv::Mat::eye(3, 4, R1.type());
+			cv::Mat P1(3, 4, R1.type()), P2(3, 4, R1.type()), P3(3, 4, R1.type()), P4(3, 4, R1.type());
+			P1(cv::Range::all(), cv::Range(0, 3)) = R1 * 1.0; P1.col(3) = T * 1.0;
+			P2(cv::Range::all(), cv::Range(0, 3)) = R2 * 1.0; P2.col(3) = T * 1.0;
+			P3(cv::Range::all(), cv::Range(0, 3)) = R1 * 1.0; P3.col(3) = -T * 1.0;
+			P4(cv::Range::all(), cv::Range(0, 3)) = R2 * 1.0; P4.col(3) = -T * 1.0;
+
+			std::vector<cv::Mat> allTriangulations(4);
+			cv::Mat Q1, Q2, Q3, Q4;
+		
+			triangulatePoints(P0, P1, currFeatures, prevFeatures, Q1);
+			Q1.row(0) /= Q1.row(3);
+			Q1.row(1) /= Q1.row(3);
+			Q1.row(2) /= Q1.row(3);
+			Q1.row(3) /= Q1.row(3);
+
+			triangulatePoints(P0, P2, currFeatures, prevFeatures, Q2);
+			Q2.row(0) /= Q2.row(3);
+			Q2.row(1) /= Q2.row(3);
+			Q2.row(2) /= Q2.row(3);
+			Q2.row(3) /= Q2.row(3);
+
+			triangulatePoints(P0, P3, currFeatures, prevFeatures, Q3);
+			Q3.row(0) /= Q3.row(3);
+			Q3.row(1) /= Q3.row(3);
+			Q3.row(2) /= Q3.row(3);
+			Q3.row(3) /= Q3.row(3);
+
+			triangulatePoints(P0, P4, currFeatures, prevFeatures, Q4);
+			Q4.row(0) /= Q4.row(3);
+			Q4.row(1) /= Q4.row(3);
+			Q4.row(2) /= Q4.row(3);
+			Q4.row(3) /= Q4.row(3);
+			int count1 = 0, count2 = 0, count3 = 0, count4 = 0;
+			int rows = Q1.rows;
+			int cols = Q1.cols;
+			cv::Size s = Q1.size();
+			rows = s.height;
+			cols = s.width;
+
+			for (int i = 0; i < cols; ++i)
+			{
+				if ((Q1.at<double>(2, i) >= Q2.at<double>(2, i)) &&
+					(Q1.at<double>(2, i) >= Q3.at<double>(2, i)) &&
+					(Q1.at<double>(2, i) >= Q4.at<double>(2, i)))
+				{
+					++count1;
+				}
+				if ((Q2.at<double>(2, i) >= Q1.at<double>(2, i)) &&
+					(Q2.at<double>(2, i) >= Q3.at<double>(2, i)) &&
+					(Q2.at<double>(2, i) >= Q4.at<double>(2, i)))
+				{
+					++count2;
+				}
+				if ((Q3.at<double>(2, i) >= Q1.at<double>(2, i)) &&
+					(Q3.at<double>(2, i) >= Q4.at<double>(2, i)) &&
+					(Q3.at<double>(2, i) >= Q2.at<double>(2, i)))
+				{
+					++count3;
+				}
+				if ((Q4.at<double>(2, i) >= Q1.at<double>(2, i)) &&
+					(Q4.at<double>(2, i) >= Q3.at<double>(2, i)) &&
+					(Q4.at<double>(2, i) >= Q2.at<double>(2, i)))
+				{
+					++count4;
+				}
+			}
+
+			if ((count1 >= count2) &&
+				(count1 >= count3) &&
+				(count1 >= count4))
+			{
+				R = R1;
+				t = T;
+			}
+			else if ((count2 >= count1) &&
+				(count2 >= count3) &&
+				(count2 >= count4))
+			{
+				R = R2;
+				t = T;
+			}
+			else if ((count3 >= count2) &&
+				(count3 >= count4)
+				&& (count3 >= count4))
+			{
+				R = R1;
+				t = T;
+			}
+			else if ((count4 >= count1) &&
+				(count4 >= count2) &&
+				(count4 >= count3))
+			{
+				R = R2;
+				t = T;
+			}
+		}
 		void RecoverPose(const std::vector<cv::Point2f>& pts_curr,
 			             const std::vector<cv::Point2f>& pts_prev){
 			const auto& focal_length = m_preprocessor.camera_param.focal_length;
@@ -209,20 +340,28 @@ namespace odometr {
 			cv::Mat E, mask;
 			E = cv::findEssentialMat(pts_curr, pts_prev, focal_length,
 				m_preprocessor.camera_param.pp, cv::RANSAC, 0.999, 1.0, mask);
+			//cv::recoverPose(E, pts_curr, pts_prev, R, t, focal_length, pp, mask);
 			// init R,t
+			
 			if (m_counter == 1)
 				cv::recoverPose(E, pts_curr, pts_prev, R, t, focal_length, pp, mask);
 			else { //calculate  R,t
+				CalculateRandT(E, R, t, pts_curr, pts_prev);
+				/*
 				cv::Matx33d R1, R2;
 				cv::Matx31d T;
 				cv::decomposeEssentialMat(E, R1, R2, T);
+				m_odometry_all.R1 = R1; m_odometry_all.R2 = R2; m_odometry_all.t = T;
 				auto euler_angles1 = rotationMatrixToEulerAngles(R1);
 				auto euler_angles2 = rotationMatrixToEulerAngles(R2);
+				m_odometry_all.euler1 = euler_angles1;
+				m_odometry_all.euler2 = euler_angles2;
+				
 				auto dist1 = abs(euler_angles1(0)) + abs(euler_angles1(1)) + abs(euler_angles1(2));
 				auto dist2 = abs(euler_angles2(0)) + abs(euler_angles2(1)) + abs(euler_angles2(2));
 				if (dist1 < dist2)
 					cv::recoverPose(E, pts_curr, pts_prev, R, t, focal_length, pp, mask);
-				else { R = R2; t = T; }
+				else { R = R2; t = T; }*/
 			}
 		}
 		
@@ -242,6 +381,7 @@ namespace odometr {
 				m_bad_flag = true;
 				return;
 			}
+			draw::DrawOpticalFlow(pts_prev, pts_curr,img);
 			RecoverPose(pts_curr, pts_prev);
 			UpdateGlobalOdometryData();
 			// Update state  tracker
@@ -255,6 +395,7 @@ namespace odometr {
 		}
 		OdometryData GetOdometryData() { return m_odometry_data; }
 		OdometryData GetGlobalOdometryData() { return m_odometry_global_data; }
+		OdometryDataAll GetOdometryDataAll() { return m_odometry_all; }
 		bool GetFlag() { return m_bad_flag; }
 		void UpdateGlobalOdometryData(){
 			const auto& t = m_odometry_data.t;
@@ -266,6 +407,11 @@ namespace odometr {
 				R_f = R;
 				return;
 			}
+			/*else {
+				double scale = 4;//0.35;
+				t_f = t_f + scale * (R_f*t);
+				R_f = R * R_f;
+			}*/
 			double scale = 4;//0.35;
 			if (  (scale > 0.1) && (t(2) > t(0)) && (t(2) > t(1))  ) {
 				t_f = t_f + scale * (R_f*t);
@@ -278,6 +424,7 @@ namespace odometr {
 		bool m_bad_flag = false;
 		OdometryData m_odometry_data;
 		OdometryData m_odometry_global_data;
+		OdometryDataAll m_odometry_all;
 		preprocess::PreProcess m_preprocessor;
 		detector::GFTTDetector m_detector;
 		tracker::Tracker m_tracker;

@@ -9,17 +9,14 @@ find_package(Boost COMPONENTS system filesystem REQUIRED)
 
 include_directories( ${Boost_INCLUDE_DIRS} )
 include_directories( ${OpenCV_INCLUDE_DIRS} )
-#include_directories("C://Program Files//IDS//uEye//Develop//include")
 
-LINK_DIRECTORIES("C://Program Files//IDS//uEye//Develop//Lib")
 file(GLOB viso
     "src/*.h"
     "src/main.cpp"
 )
 
 add_executable(  vo ${viso} )
-target_link_libraries( vo #uEye_api_64.lib
-                       ${OpenCV_LIBS} 
+target_link_libraries( vo ${OpenCV_LIBS} 
                        ${Boost_FILESYSTEM_LIBRARY}
                        ${Boost_SYSTEM_LIBRARY})
 
